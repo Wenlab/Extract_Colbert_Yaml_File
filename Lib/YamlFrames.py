@@ -9,6 +9,31 @@ def OpenYaml(yaml_path:str):
             Yaml_file.append(line)
     return(Yaml_file)
 
+
+def GetPlatform():
+    # 获取操作系统种类
+    import platform
+    sysl = platform.system()
+    if sysl == "Windows":
+        print("OS is Windows")
+        return("Windows")
+    elif sysl == "Linux":
+        print("Os is Linux")
+        return("Linux")
+    else:
+        pass
+
+def GetWormName(yaml_path):
+    # 文件路径提取线虫名字
+    sysl = GetPlatform()
+    if sysl == "Windows":
+        wormname = yaml_path.split('\\')[-1]
+        wormname = wormname.split(".")[0]
+    elif sysl == "Linux":
+        wormname = yaml_path.split('/')[-1]
+        wormname = wormname.split(".")[0]
+    return(wormname)
+
 def Get_Frames_line(lines):
     # 获取'Frames: ' 行数
     import re
@@ -86,6 +111,21 @@ def ConvertData(lists:list,begin_data:int,end_data:int):
     data0[1,:] = data[1:200:2]  # y隔一个取一个值
     return(data0)
 
+def Avaryge1D_for_caps(caps_t):
+    # 1为numpy数组x1<x2<...<xN
+    # 否则用两边的平均值代替中间，返回改变后的结果
+    n = caps_t.size
+    if caps_t[1] == caps_t[0]:
+        caps_t[1] = (caps_t[0]+caps_t[2])/2
+    elif caps_t[n-1] == caps_t[n-2]:
+        caps_t[n-2] = (caps_t[n-3]+caps_t[n-1])/2
+    for i in range(1,n-2):
+        if caps_t[i]<caps_t[i+1]:
+            continue
+        else:
+            caps_t[i] = (caps_t[i-1]+caps_t[i+1])/2
+    return(caps_t)
+
 def Get_Angle_Curve(centerline):
     # 输入Centerline 2*100维
     # 输出
@@ -111,8 +151,9 @@ def Get_Angle_Curve(centerline):
     df1 = df*df
     dfs = np.sqrt(np.dot([1,1],df1))
     dft = dfs.reshape(1,len(dfs))
-    t0 = np.insert(dft,0,0)
+    t0 = np.insert(dft,0,0.000001)
     t = np.cumsum(t0)
+    t = Avaryge1D_for_caps(t)  # 使得x1<x2<...<xN,否则用两边的平均值代替中间
     worm_length = t[-1]  #线虫长度
 
     cv0 = csaps(t,centerline,smooth = spline_p)
@@ -139,6 +180,61 @@ def Get_Angle_Curve(centerline):
     curvedatafiltered = scipy.ndimage.correlate(curve*100, kernel, mode='nearest')
     return(worm_length,angle.transpose(),curve.flatten(),curvedatafiltered.flatten())
 
+
+
+def Serial_Extraction_Data1(yaml_path):
+    ListFile = OpenYaml(yaml_path)
+    begin_num1 = Get_First_Frames(ListFile)
+    end_num = Get_End_Frames(ListFile)
+    All_Frames_num = end_num-begin_num1+1  # 总的帧数
+    wormname = GetWormName(yaml_path)
+    
+    YamlFiles = YamlFrames(wormname,All_Frames_num)
+    YamlFiles.ExperimentTime = Get_ExperimentTime(ListFile)
+    YamlFiles.DefaultGridSizeForNonProtocolIllum = Get_DefaultGrid(ListFile)
+    for i in range(0,All_Frames_num):
+        framelist = Get_Any_Frame(ListFile,i+1) # 提取的一帧的内容
+        frame = Extract_OneFrame(framelist)
+        YamlFiles.FrameNumber[i,:] = frame.FrameNumber #internal frame number, not nth recorded frame
+        YamlFiles.TimeElapsed[i,:] = frame.TimeElapsed #time since start of experiment (in s) = sElapsed+ 0.001*msRemElapsed
+        YamlFiles.BoundaryA[i,0,:] = frame.BoundaryA[0,:] # N*2*100 x,y BoundaryA position in pixels on camera
+        YamlFiles.BoundaryA[i,1,:] = frame.BoundaryA[1,:]
+    
+        YamlFiles.BoundaryB[i,0,:] = frame.BoundaryB[0,:] # N*2*100 x,y BoundaryB position in pixels on camera
+        YamlFiles.BoundaryB[i,1,:] = frame.BoundaryB[1,:]
+    
+        YamlFiles.Centerline[i,0,:] = frame.Centerline[0,:]  # N*2*100 x,y centerline position in pixels on camera
+        YamlFiles.Centerline[i,1,:] = frame.Centerline[1,:]
+    
+        YamlFiles.Head[i,:] = frame.Head[:]  #position in pixels on camera
+        YamlFiles.Tail[i,:] = frame.Tail[:]  #position in pixels on camera
+        YamlFiles.DLPisOn[i] = frame.DLPisOn #bool whether DLP is active
+    
+        YamlFiles.FloodLightIsOn[i] = frame.FloodLightIsOn #flood light overrides all other patterns and hits entire fov
+        YamlFiles.IllumInvert[i] = frame.IllumInvert #whether pattern is inverted (invert has precedence over floodlight)
+        YamlFiles.IllumFlipLR[i] = frame.IllumFlipLR #flips output left/right with respect to worm's body
+        YamlFiles.IllumRectOrigin[i,:] = frame.IllumRectOrigin[:] #center of the freehand rectangular illumination in wormspace
+        YamlFiles.IllumRectRadius[i,:] = frame.IllumRectRadius[:] #xy value describing dimension of rectangle
+        YamlFiles.StageVelocity[i,:] = frame.StageVelocity[:] #velocity sent to stage in stage units/second
+        YamlFiles.StagePosition[i,:] = frame.StagePosition[:]
+        YamlFiles.StageFeedbackTarget[i,:] = frame.StageFeedbackTarget[:]
+        YamlFiles.FirstLaser[i] = frame.FirstLaser
+        YamlFiles.SecondLaser[i] = frame.SecondLaser
+        YamlFiles.ProtocolIsOn[i] = frame.ProtocolIsOn
+        YamlFiles.ProtocolStep[i] =frame.ProtocolStep
+    
+        Centerline = YamlFiles.Centerline[i,:,:]
+        print(i)
+        worm_length,angle_data,curve_data,curvedatafiltered = Get_Angle_Curve(Centerline)
+        YamlFiles.worm_length = YamlFiles.worm_length+worm_length
+        YamlFiles.angle_data[i,:] = angle_data
+        YamlFiles.curve_data[i,:] = curve_data
+        YamlFiles.curvedatafiltered[i,:] = -curvedatafiltered[::-1]  #将数组反转
+    # YamlFiles.LaserPower.append(frame.LaserPower)
+    YamlFiles.worm_length = YamlFiles.worm_length/All_Frames_num
+    return(YamlFiles)
+
+    
 
 
 class Extract_OneFrame(object):
@@ -169,6 +265,10 @@ class Extract_OneFrame(object):
         self.SecondLaser = int(OneFrameList[95].split(':')[-1])
         self.ProtocolIsOn = int(OneFrameList[96].split(':')[-1])
         self.ProtocolStep = int(OneFrameList[97].split(':')[-1])
+        # self.curve_data # curve_data
+        # self.angle_data   # angle_data
+        # self.curvedatafiltered  curvedatafiltered
+        
         # self.LaserPower = OneFrameList[93].split(':')[-1]
         # self.GreenLaser = 
         # self.BlueLaser =
@@ -203,6 +303,10 @@ class YamlFrames(object):
         self.SecondLaser = np.zeros((framessize,1))
         self.ProtocolIsOn = np.zeros((framessize,1))
         self.ProtocolStep = np.zeros((framessize,1))
+        
+        self.curve_data = np.zeros((framessize,100))  # curve_data
+        self.angle_data = np.zeros((framessize,101))  # angle_data
+        self.curvedatafiltered = np.zeros((framessize,100)) # curvedatafiltered
         # self.LaserPower = []  # 一个空的list
         # self.GreenLaser = np.zeros((framessize,1))  #int 0-100 of relative laser power. -1 means leaser is not being controlled programmatically
         # self.BlueLaser = np.zeros((framessize,1)) #int 0-100 of relative laser power. -1 means leaser is not being controlled programmatically
