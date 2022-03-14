@@ -9,6 +9,16 @@ def OpenYaml(yaml_path:str):
             Yaml_file.append(line)
     return(Yaml_file)
 
+def check_tdata(t):
+    # 检查输入进caps函数的数据是否单增
+    n = t.size
+    for i in range(0,n-1):
+        if t[i+1]>t[i]:
+            continue
+        else:
+            print(i)
+            # break
+
 
 def GetPlatform():
     # 获取操作系统种类
@@ -151,7 +161,7 @@ def Get_Angle_Curve(centerline):
     df1 = df*df
     dfs = np.sqrt(np.dot([1,1],df1))
     dft = dfs.reshape(1,len(dfs))
-    t0 = np.insert(dft,0,0.000001)
+    t0 = np.insert(dft,0,0.000001)  # 在最前面插入 0.000001 ,防止t前面的有多个0
     t = np.cumsum(t0)
     t = Avaryge1D_for_caps(t)  # 使得x1<x2<...<xN,否则用两边的平均值代替中间
     worm_length = t[-1]  #线虫长度
@@ -177,8 +187,9 @@ def Get_Angle_Curve(centerline):
     angle = np.unwrap(atdf2)
     curve = (np.unwrap(np.diff(angle))).reshape(1,100)
     kernel = np.ones((timefilter,bodyfilter), np.float32)/(timefilter*bodyfilter)
-    curvedatafiltered = scipy.ndimage.correlate(curve*100, kernel, mode='nearest')
-    return(worm_length,angle.transpose(),curve.flatten(),curvedatafiltered.flatten())
+    curvedatafiltered = (scipy.ndimage.correlate(curve*100, kernel, mode='nearest')).flatten()
+    curvedatafiltered = -curvedatafiltered[::-1]
+    return(worm_length,angle.transpose(),curve.flatten(),curvedatafiltered)
 
 
 
@@ -191,6 +202,8 @@ def Serial_Extraction_Data1(yaml_path):
     
     YamlFiles = YamlFrames(wormname,All_Frames_num)
     YamlFiles.ExperimentTime = Get_ExperimentTime(ListFile)
+    print(YamlFiles.ExperimentTime)
+    
     YamlFiles.DefaultGridSizeForNonProtocolIllum = Get_DefaultGrid(ListFile)
     for i in range(0,All_Frames_num):
         framelist = Get_Any_Frame(ListFile,i+1) # 提取的一帧的内容
