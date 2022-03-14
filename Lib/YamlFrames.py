@@ -86,6 +86,60 @@ def ConvertData(lists:list,begin_data:int,end_data:int):
     data0[1,:] = data[1:200:2]  # y隔一个取一个值
     return(data0)
 
+def Get_Angle_Curve(centerline):
+    # 输入Centerline 2*100维
+    # 输出
+    # worm_length: 单帧的线虫长度
+    # angle：ndarray(101,)单帧的角度
+    # curve: ndarray(100,) 曲率
+    # curvedatafiltered: ndarray(100,) 归一化后的曲率
+    
+    
+    import numpy as np
+    from csaps import csaps
+    from scipy import interpolate
+    import scipy.ndimage
+    
+    numcurvepts = 100
+    proximity = 50
+    spline_p = 0.0005
+    flip=0
+    timefilter = 5
+    bodyfilter =10
+
+    df = np.diff(centerline)
+    df1 = df*df
+    dfs = np.sqrt(np.dot([1,1],df1))
+    dft = dfs.reshape(1,len(dfs))
+    t0 = np.insert(dft,0,0)
+    t = np.cumsum(t0)
+    worm_length = t[-1]  #线虫长度
+
+    cv0 = csaps(t,centerline,smooth = spline_p)
+    cv2 = cv0(t)
+    df2 = np.diff(cv2)
+
+    df2s = np.sqrt(np.dot([1,1],df2*df2))
+    dft = df2s.reshape(1,len(df2s))
+    splen = np.cumsum(np.insert(dft,0,0)).reshape(1,100)
+    # cv2 = np.interp(splen+0.00001*np.linspace(0,splen.size-1,splen.size,endpoint=True,dtype=float),cv2.transpose().reshape(100,2),(np.linspace(0,splen[0,-1]-1,102)).reshape(1,102))
+    cv2i0 = splen+0.00001*np.linspace(0,splen.size-1,splen.size,endpoint=True,dtype=float)
+    cv2i1 = cv2
+    cv2i2 = (np.linspace(0,splen[0,-1]-1,102)).reshape(1,102)
+    cv2i = interpolate.interp1d(cv2i0.reshape(100,),cv2i1,bounds_error=False)
+    # df*df
+    # t = cumsum([0,np.sqrt(np.array([1,1])*(df*df))])
+    newcv = np.array([cv2i(cv2i2)[0,0,:],cv2i(cv2i2)[1,0,:]]).reshape(2,102)
+
+    dfcv2= np.diff(newcv)
+    atdf2 = np.arctan2(-dfcv2[1,:],dfcv2[0,:])
+    angle = np.unwrap(atdf2)
+    curve = (np.unwrap(np.diff(angle))).reshape(1,100)
+    kernel = np.ones((timefilter,bodyfilter), np.float32)/(timefilter*bodyfilter)
+    curvedatafiltered = scipy.ndimage.correlate(curve*100, kernel, mode='nearest')
+    return(worm_length,angle.transpose(),curve.flatten(),curvedatafiltered.flatten())
+
+
 
 class Extract_OneFrame(object):
     # 提取一帧的 类
@@ -124,6 +178,8 @@ class Extract_OneFrame(object):
 class YamlFrames(object):
     def __init__(self,name: str, framessize: int):
         import numpy as np
+        
+        self.worm_length = 0
         self.name = name
         self.ExperimentTime = 'Sun May 16 20:51:33 2021'
         self.DefaultGridSizeForNonProtocolIllum = np.zeros((1,2)) # DefaultGridSizeForNonProtocolIllum
