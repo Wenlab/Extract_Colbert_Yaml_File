@@ -1,3 +1,4 @@
+from unittest import result
 import numpy as np
 
 def OpenYaml(yaml_path:str):
@@ -191,6 +192,81 @@ def Get_Angle_Curve(centerline):
     curvedatafiltered = -curvedatafiltered[::-1]
     return(worm_length,angle.transpose(),curve.flatten(),curvedatafiltered)
 
+class Multi_task(object):
+    # 存储传入对线程函数的参数
+    def __init__(self,tasknum:int,centerlines):
+        self.tasknum = tasknum
+        self.multicenterlines = centerlines
+
+class MultiData_curvedatafiltered(object):
+    def __init__(self,num:int):
+        import numpy as np
+        # num是处理数量
+        self.taskid = 0
+        self.worm_length = 0
+        self.angle_data = np.zeros((num,101))
+        self.curve_data = np.zeros((num,100))
+        self.curvedatafiltered = np.zeros((num,100))
+        
+
+def Get_Multi_curvedatafiltered(centerlines):
+    import numpy as np
+    # 输入时M*100维向量,代表M帧的数据
+    # 输出是一个class,包含worm_length，angle_data，curve_data，curvedatafiltered
+    m = len(centerlines.multicenterlines)
+    # print(m)
+    result = MultiData_curvedatafiltered(m)
+    result.taskid = centerlines.tasknum #记录是第几个进程计算的
+    for i in range(m):
+        centerline = centerlines.multicenterlines[i,:,:]
+        worm_length,result.angle_data[i,:],result.curve_data[i,:],result.curvedatafiltered[i,:] = Get_Angle_Curve(centerline)
+        result.worm_length = result.worm_length+worm_length
+    return(result)
+    
+
+def Just_Get_Raw(yaml_path):
+    ListFile = OpenYaml(yaml_path)
+    begin_num1 = Get_First_Frames(ListFile)
+    end_num = Get_End_Frames(ListFile)
+    All_Frames_num = end_num-begin_num1+1  # 总的帧数
+    wormname = GetWormName(yaml_path)
+    YamlFiles = YamlFrames(wormname,All_Frames_num)
+    YamlFiles.ExperimentTime = Get_ExperimentTime(ListFile)
+    print(YamlFiles.ExperimentTime)    
+
+    YamlFiles.DefaultGridSizeForNonProtocolIllum = Get_DefaultGrid(ListFile)
+    for i in range(0,All_Frames_num):
+        framelist = Get_Any_Frame(ListFile,i+1) # 提取的一帧的内容
+        frame = Extract_OneFrame(framelist)
+        YamlFiles.FrameNumber[i,:] = frame.FrameNumber #internal frame number, not nth recorded frame
+        YamlFiles.TimeElapsed[i,:] = frame.TimeElapsed #time since start of experiment (in s) = sElapsed+ 0.001*msRemElapsed
+        YamlFiles.BoundaryA[i,0,:] = frame.BoundaryA[0,:] # N*2*100 x,y BoundaryA position in pixels on camera
+        YamlFiles.BoundaryA[i,1,:] = frame.BoundaryA[1,:]
+    
+        YamlFiles.BoundaryB[i,0,:] = frame.BoundaryB[0,:] # N*2*100 x,y BoundaryB position in pixels on camera
+        YamlFiles.BoundaryB[i,1,:] = frame.BoundaryB[1,:]
+    
+        YamlFiles.Centerline[i,0,:] = frame.Centerline[0,:]  # N*2*100 x,y centerline position in pixels on camera
+        YamlFiles.Centerline[i,1,:] = frame.Centerline[1,:]
+    
+        YamlFiles.Head[i,:] = frame.Head[:]  #position in pixels on camera
+        YamlFiles.Tail[i,:] = frame.Tail[:]  #position in pixels on camera
+        YamlFiles.DLPisOn[i] = frame.DLPisOn #bool whether DLP is active
+    
+        YamlFiles.FloodLightIsOn[i] = frame.FloodLightIsOn #flood light overrides all other patterns and hits entire fov
+        YamlFiles.IllumInvert[i] = frame.IllumInvert #whether pattern is inverted (invert has precedence over floodlight)
+        YamlFiles.IllumFlipLR[i] = frame.IllumFlipLR #flips output left/right with respect to worm's body
+        YamlFiles.IllumRectOrigin[i,:] = frame.IllumRectOrigin[:] #center of the freehand rectangular illumination in wormspace
+        YamlFiles.IllumRectRadius[i,:] = frame.IllumRectRadius[:] #xy value describing dimension of rectangle
+        YamlFiles.StageVelocity[i,:] = frame.StageVelocity[:] #velocity sent to stage in stage units/second
+        YamlFiles.StagePosition[i,:] = frame.StagePosition[:]
+        YamlFiles.StageFeedbackTarget[i,:] = frame.StageFeedbackTarget[:]
+        YamlFiles.FirstLaser[i] = frame.FirstLaser
+        YamlFiles.SecondLaser[i] = frame.SecondLaser
+        YamlFiles.ProtocolIsOn[i] = frame.ProtocolIsOn
+        YamlFiles.ProtocolStep[i] =frame.ProtocolStep
+    return(YamlFiles)
+
 
 
 def Serial_Extraction_Data1(yaml_path):
@@ -237,7 +313,7 @@ def Serial_Extraction_Data1(yaml_path):
         YamlFiles.ProtocolStep[i] =frame.ProtocolStep
     
         Centerline = YamlFiles.Centerline[i,:,:]
-        print(i)
+        # print(i)
         worm_length,angle_data,curve_data,curvedatafiltered = Get_Angle_Curve(Centerline)
         YamlFiles.worm_length = YamlFiles.worm_length+worm_length
         YamlFiles.angle_data[i,:] = angle_data
@@ -326,3 +402,71 @@ class YamlFrames(object):
         # self.HeadCurv = np.zeros((framessize,1)) #curvature of the head
         # self.HeadCurvDeriv = np.zeros((framessize,1)) #derivative of curvature of the head
 
+def Extract_Yaml_Multiprocess_one(yaml_path):
+    import os
+    import time
+    import math
+    import datetime
+    import multiprocessing as mp
+
+    # 并行导入一个Yaml文件
+    time_start = time.time()
+    ListFile = OpenYaml(yaml_path) # 导入数据
+    begin_num1 = Get_First_Frames(ListFile)
+    end_num = Get_End_Frames(ListFile)
+
+    All_Frames_num = end_num-begin_num1+1  # 总的帧数
+    print("Total frames:",All_Frames_num)
+    YamlData = Just_Get_Raw(yaml_path)
+
+    time_end = time.time()
+    print('Load data time cost:',time_end-time_start,'s')
+
+    frames = len(YamlData.Centerline)  # 数据帧数
+
+
+
+    num_cores = int(mp.cpu_count())
+
+    each_core_pro_num = math.ceil(frames/num_cores) # 平均每个处理多少帧
+
+    # 并行处理数据
+    time_start = time.time()
+
+    p=mp.Pool(num_cores) #创建含有num_cores个进程的进程池
+    results=[] #存放每一个进程返回的结果
+
+    for i in range(num_cores): # 启动8个进程
+        if i<num_cores-1:
+            centerlines = Multi_task(i,YamlData.Centerline[i*each_core_pro_num:(i+1)*each_core_pro_num,:,:])
+            r=p.apply_async(Get_Multi_curvedatafiltered,args=(centerlines,)) # 产生一个非同步进程，函数newsin的参数用args传递
+            results.append(r) # 将返回结果放入results
+        else:
+            centerlines = Multi_task(i,YamlData.Centerline[i*each_core_pro_num:-1,:,:]) # 最后一个核把剩下全部计算
+            r=p.apply_async(Get_Multi_curvedatafiltered,args=(centerlines,)) # 产生一个非同步进程，函数newsin的参数用args传递
+            results.append(r) # 将返回结果放入results
+    # print(i)
+    p.close() #关闭进程池
+    p.join()  #结束
+
+    time_end = time.time()
+    print('并行处理数据 time cost:',time_end-time_start,'s')
+
+
+    # 合并数据
+    for item in results:
+        data = item.get()
+        dataid = data.taskid
+        if dataid<num_cores-1:
+            YamlData.angle_data[dataid*each_core_pro_num:(dataid+1)*each_core_pro_num,:] = data.angle_data[:,:]
+            YamlData.curve_data[dataid*each_core_pro_num:(dataid+1)*each_core_pro_num,:] = data.curve_data[:,:]
+            YamlData.curvedatafiltered[dataid*each_core_pro_num:(dataid+1)*each_core_pro_num,:] = data.curvedatafiltered[:,:]
+            YamlData.worm_length = YamlData.worm_length+data.worm_length
+        else:
+            YamlData.angle_data[dataid*each_core_pro_num:-1,:] = data.angle_data
+            YamlData.curve_data[dataid*each_core_pro_num:-1,:] = data.curve_data
+            YamlData.curvedatafiltered[dataid*each_core_pro_num:-1,:] = data.curvedatafiltered
+            YamlData.worm_length = YamlData.worm_length+data.worm_length
+    YamlData.worm_length = YamlData.worm_length/All_Frames_num
+
+    return(YamlData)
