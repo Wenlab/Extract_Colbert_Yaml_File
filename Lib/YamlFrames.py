@@ -60,7 +60,11 @@ def Get_First_Frames(lines):
 
 def Get_End_Frames(lines):
     # 获取最后一个Frames的开始一行
-    linenumber = lines[-98].split(':')[-1]
+    import re
+    for i in range(1,100):
+        if re.match('FrameNumber',lines[-i]):
+            break
+    linenumber = lines[-i].split(':')[-1]
     return(int(linenumber))
 
 def Get_One_Frame(lines,line_start):
@@ -234,8 +238,12 @@ def Just_Get_Raw(yaml_path):
     YamlFiles.ExperimentTime = Get_ExperimentTime(ListFile)
     print(YamlFiles.ExperimentTime)    
 
+    framesline =  Get_Frames_line(ListFile)  # Frames的行数
+    real_frames = (len(ListFile)-(framesline+1))/99
+    print("real frames:",real_frames)
+
     YamlFiles.DefaultGridSizeForNonProtocolIllum = Get_DefaultGrid(ListFile)
-    for i in range(0,All_Frames_num):
+    for i in range(0,int(real_frames)):
         framelist = Get_Any_Frame(ListFile,i+1) # 提取的一帧的内容
         frame = Extract_OneFrame(framelist)
         YamlFiles.FrameNumber[i,:] = frame.FrameNumber #internal frame number, not nth recorded frame
@@ -415,8 +423,12 @@ def Extract_Yaml_Multiprocess_one(yaml_path):
     begin_num1 = Get_First_Frames(ListFile)
     end_num = Get_End_Frames(ListFile)
 
+    framesline =  Get_Frames_line(ListFile)  # Frames的行数
+    real_frames = (len(ListFile)-(framesline+1))/99
+    print("real frames:",real_frames)
     All_Frames_num = end_num-begin_num1+1  # 总的帧数
-    print("Total frames:",All_Frames_num)
+    print("End- begin Total frames:",All_Frames_num)
+    
     YamlData = Just_Get_Raw(yaml_path)
 
     time_end = time.time()
