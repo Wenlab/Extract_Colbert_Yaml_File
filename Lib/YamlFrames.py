@@ -229,6 +229,7 @@ def Get_Multi_curvedatafiltered(centerlines):
     
 
 def Just_Get_Raw(yaml_path):
+    import math
     ListFile = OpenYaml(yaml_path)
     begin_num1 = Get_First_Frames(ListFile)
     end_num = Get_End_Frames(ListFile)
@@ -239,7 +240,7 @@ def Just_Get_Raw(yaml_path):
     print(YamlFiles.ExperimentTime)    
 
     framesline =  Get_Frames_line(ListFile)  # Frames的行数
-    real_frames = (len(ListFile)-(framesline+1))/99
+    real_frames = math.ceil((len(ListFile)-(framesline+1))/99)
     print("real frames:",real_frames)
 
     YamlFiles.DefaultGridSizeForNonProtocolIllum = Get_DefaultGrid(ListFile)
@@ -424,7 +425,7 @@ def Extract_Yaml_Multiprocess_one(yaml_path):
     end_num = Get_End_Frames(ListFile)
 
     framesline =  Get_Frames_line(ListFile)  # Frames的行数
-    real_frames = (len(ListFile)-(framesline+1))/99
+    real_frames = math.ceil((len(ListFile)-(framesline+1))/99)
     print("real frames:",real_frames)
     All_Frames_num = end_num-begin_num1+1  # 总的帧数
     print("End- begin Total frames:",All_Frames_num)
