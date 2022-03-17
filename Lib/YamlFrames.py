@@ -54,14 +54,15 @@ def Get_Frames_line(lines):
     return(i)
 
 def Get_First_Frames(lines):
+    # 获得第一帧的拍摄的帧数
     linenumber = Get_Frames_line(lines)+2
     FramsNumber = lines[linenumber].split(':')[-1]
     return(int(FramsNumber))
 
 def Get_End_Frames(lines):
-    # 获取最后一个Frames的开始一行
+    # 获取最后一个Frames的开始一行,从0开始数
     import re
-    for i in range(1,100):
+    for i in range(1,120):
         if re.match('FrameNumber',lines[-i]):
             break
     linenumber = lines[-i].split(':')[-1]
@@ -88,6 +89,15 @@ def Get_Any_Frame(lines,number):
     else:
         frames_line_num = Get_Frames_line(lines)+2+(number-1)*99
         return(Get_One_Frame(lines,frames_line_num))
+
+def Get_Real_Line_num(lines,frame_num):
+    # 输入frame_num,从1数
+    # 第frame_num帧的行数
+    frames_line = Get_Frames_line(lines)
+    print("file line:",frames_line+2+99*(frame_num-1))
+    # print("real frames:",)
+    print(Get_Any_Frame(lines,frame_num)[0])
+    return(frames_line+99*frame_num)
 
 def Get_ExperimentTime(lines:list):
     # 获取'ExperimentTime: '
@@ -155,6 +165,11 @@ def Get_Angle_Curve(centerline):
     from scipy import interpolate
     import scipy.ndimage
     
+    # 如果Centerline是空的
+    if np.sum(centerline)==0:
+        return(0, np.zeros((1,101)), np.zeros((1,100)), np.zeros((1,100)))
+
+
     numcurvepts = 100
     proximity = 50
     spline_p = 0.0005
@@ -166,9 +181,9 @@ def Get_Angle_Curve(centerline):
     df1 = df*df
     dfs = np.sqrt(np.dot([1,1],df1))
     dft = dfs.reshape(1,len(dfs))
-    t0 = np.insert(dft,0,0.000001)  # 在最前面插入 0.000001 ,防止t前面的有多个0
+    t0 = np.insert(dft,0,0.000001)+0.000001  # 在最前面插入 0.000001 ,防止t前面的有多个0
     t = np.cumsum(t0)
-    t = Avaryge1D_for_caps(t)  # 使得x1<x2<...<xN,否则用两边的平均值代替中间
+    # t = Avaryge1D_for_caps(t)  # 使得x1<x2<...<xN,否则用两边的平均值代替中间
     worm_length = t[-1]  #线虫长度
 
     cv0 = csaps(t,centerline,smooth = spline_p)
@@ -207,7 +222,7 @@ class MultiData_curvedatafiltered(object):
         import numpy as np
         # num是处理数量
         self.taskid = 0
-        self.worm_length = 0
+        self.worm_length = np.zeros((num,1))
         self.angle_data = np.zeros((num,101))
         self.curve_data = np.zeros((num,100))
         self.curvedatafiltered = np.zeros((num,100))
@@ -223,8 +238,7 @@ def Get_Multi_curvedatafiltered(centerlines):
     result.taskid = centerlines.tasknum #记录是第几个进程计算的
     for i in range(m):
         centerline = centerlines.multicenterlines[i,:,:]
-        worm_length,result.angle_data[i,:],result.curve_data[i,:],result.curvedatafiltered[i,:] = Get_Angle_Curve(centerline)
-        result.worm_length = result.worm_length+worm_length
+        result.worm_length[i],result.angle_data[i,:],result.curve_data[i,:],result.curvedatafiltered[i,:] = Get_Angle_Curve(centerline)
     return(result)
     
 
@@ -235,16 +249,21 @@ def Just_Get_Raw(yaml_path):
     end_num = Get_End_Frames(ListFile)
     All_Frames_num = end_num-begin_num1+1  # 总的帧数
     wormname = GetWormName(yaml_path)
-    YamlFiles = YamlFrames(wormname,All_Frames_num)
-    YamlFiles.ExperimentTime = Get_ExperimentTime(ListFile)
-    print(YamlFiles.ExperimentTime)    
 
     framesline =  Get_Frames_line(ListFile)  # Frames的行数
     real_frames = math.ceil((len(ListFile)-(framesline+1))/99)
+
     print("real frames:",real_frames)
 
+    print("Total Real frames:",real_frames-1)
+    YamlFiles = YamlFrames(wormname,real_frames-1)
+    YamlFiles.ExperimentTime = Get_ExperimentTime(ListFile)
+    print(YamlFiles.ExperimentTime)    
+
+
     YamlFiles.DefaultGridSizeForNonProtocolIllum = Get_DefaultGrid(ListFile)
-    for i in range(0,int(real_frames)):
+    # 把最后一帧去掉,防止最后一帧少几行
+    for i in range(0,int(real_frames)-1):
         framelist = Get_Any_Frame(ListFile,i+1) # 提取的一帧的内容
         frame = Extract_OneFrame(framelist)
         YamlFiles.FrameNumber[i,:] = frame.FrameNumber #internal frame number, not nth recorded frame
@@ -377,7 +396,8 @@ class YamlFrames(object):
     def __init__(self,name: str, framessize: int):
         import numpy as np
         
-        self.worm_length = 0
+        self.worm_length = np.zeros((framessize,1))
+        self.mean_worm_length = 0.0
         self.name = name
         self.ExperimentTime = 'Sun May 16 20:51:33 2021'
         self.DefaultGridSizeForNonProtocolIllum = np.zeros((1,2)) # DefaultGridSizeForNonProtocolIllum
@@ -431,6 +451,8 @@ def Extract_Yaml_Multiprocess_one(yaml_path):
     print("End- begin Total frames:",All_Frames_num)
     
     YamlData = Just_Get_Raw(yaml_path)
+    print("Delete Last Frame...")
+
 
     time_end = time.time()
     print('Load data time cost:',time_end-time_start,'s')
@@ -450,6 +472,7 @@ def Extract_Yaml_Multiprocess_one(yaml_path):
     results=[] #存放每一个进程返回的结果
 
     for i in range(num_cores): # 启动8个进程
+        # print(i)
         if i<num_cores-1:
             centerlines = Multi_task(i,YamlData.Centerline[i*each_core_pro_num:(i+1)*each_core_pro_num,:,:])
             r=p.apply_async(Get_Multi_curvedatafiltered,args=(centerlines,)) # 产生一个非同步进程，函数newsin的参数用args传递
@@ -474,12 +497,13 @@ def Extract_Yaml_Multiprocess_one(yaml_path):
             YamlData.angle_data[dataid*each_core_pro_num:(dataid+1)*each_core_pro_num,:] = data.angle_data[:,:]
             YamlData.curve_data[dataid*each_core_pro_num:(dataid+1)*each_core_pro_num,:] = data.curve_data[:,:]
             YamlData.curvedatafiltered[dataid*each_core_pro_num:(dataid+1)*each_core_pro_num,:] = data.curvedatafiltered[:,:]
-            YamlData.worm_length = YamlData.worm_length+data.worm_length
+            YamlData.worm_length[dataid*each_core_pro_num:(dataid+1)*each_core_pro_num] = data.worm_length[:]
         else:
             YamlData.angle_data[dataid*each_core_pro_num:-1,:] = data.angle_data
             YamlData.curve_data[dataid*each_core_pro_num:-1,:] = data.curve_data
             YamlData.curvedatafiltered[dataid*each_core_pro_num:-1,:] = data.curvedatafiltered
-            YamlData.worm_length = YamlData.worm_length+data.worm_length
-    YamlData.worm_length = YamlData.worm_length/All_Frames_num
-
+            YamlData.worm_length[dataid*each_core_pro_num:-1] = data.worm_length[:]
+    worm_length = YamlData.worm_length
+    exist = (worm_length!= 0)
+    YamlData.mean_worm_length = worm_length.sum()/exist.sum()
     return(YamlData)
