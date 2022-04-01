@@ -488,11 +488,13 @@ def Extract_Yaml_Multiprocess_one(yaml_path):
     time_end = time.time()
     print('并行处理数据 time cost:',time_end-time_start,'s')
 
-
+    print("开始合并数据")
+    time_start = time.time()
     # 合并数据
     for item in results:
         data = item.get()
         dataid = data.taskid
+        # print(dataid)
         if dataid<num_cores-1:
             YamlData.angle_data[dataid*each_core_pro_num:(dataid+1)*each_core_pro_num,:] = data.angle_data[:,:]
             YamlData.curve_data[dataid*each_core_pro_num:(dataid+1)*each_core_pro_num,:] = data.curve_data[:,:]
@@ -506,4 +508,6 @@ def Extract_Yaml_Multiprocess_one(yaml_path):
     worm_length = YamlData.worm_length
     exist = (worm_length!= 0)
     YamlData.mean_worm_length = worm_length.sum()/exist.sum()
+    time_end = time.time()
+    print('合并数据 time cost:',time_end-time_start,'s')
     return(YamlData)
