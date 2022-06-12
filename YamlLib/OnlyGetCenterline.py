@@ -16,8 +16,8 @@ class YamlFrames_Onely_Centerline(object):
         self.DLPisOn = np.zeros((framessize,1)) #bool whether DLP is active
 
 def Just_Get_Centerline(yaml_path):
-    from Lib.YamlFrames import OpenYaml,Get_First_Frames,Get_End_Frames,GetWormName,Get_ExperimentTime,Get_DefaultGrid
-    from Lib.YamlFrames import Get_Any_Frame,Extract_OneFrame
+    from YamlLib.YamlFrames import OpenYaml,Get_First_Frames,Get_End_Frames,GetWormName,Get_ExperimentTime,Get_DefaultGrid
+    from YamlLib.YamlFrames import Get_Any_Frame,Extract_OneFrame
     ListFile = OpenYaml(yaml_path)
     begin_num1 = Get_First_Frames(ListFile)
     end_num = Get_End_Frames(ListFile)
