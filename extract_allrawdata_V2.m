@@ -1,13 +1,14 @@
 tic
 %目的：将rawdata中一个文件夹下所有*.yaml文件提取出name,头尾位置，angle_data,curve_datafilter等原始数据
 %然后将其导入到data对应文件夹下面
-Wormconfig;
 
-TypePathname={'Forward','N2','Backward','Tosif_data'};
+
+TypePathname={'YamlFiles','N2','Backward','Tosif_data'};
+workpath = uigetdir('C:');
 
 for filepath_num=1:length(TypePathname)
     filepath = TypePathname{filepath_num};
-    pathname = fullfile(workpath,'rawdata',filepath); %the rawdata's path
+    pathname = fullfile(workpath,filepath); %the rawdata's path
     yamlfiles = dir(fullfile(pathname,'*.yaml'));
     if length(yamlfiles)==0
         disp(strcat(filepath,' folder has no *.yaml'))

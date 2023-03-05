@@ -140,7 +140,6 @@ for filepath_num=1:length(TypePathname)
             
         end
         
-        worm_length=worm_length/numframes;
         clearvars -except wormdata workpath pathname TypePathname filepath filename yamlfiles wormname
         savename=strrep(filename,'.yaml','.mat');
         savefolder=fullfile(workpath,'data',filepath);
