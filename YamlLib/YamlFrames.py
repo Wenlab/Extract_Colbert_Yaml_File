@@ -25,15 +25,17 @@ def check_tdata(t):
             # break
 
 
-def GetPlatform():
+def GetPlatform(isPrint=False):
     # 获取操作系统种类
     import platform
     sysl = platform.system()
     if sysl == "Windows":
-        print("OS is Windows")
+        if isPrint:
+            print("OS is Windows")
         return ("Windows")
     elif sysl == "Linux":
-        print("Os is Linux")
+        if isPrint:
+            print("Os is Linux")
         return ("Linux")
     else:
         pass
@@ -166,9 +168,8 @@ def Avaryge1D_for_caps(caps_t):
             caps_t[i] = (caps_t[i - 1] + caps_t[i + 1]) / 2
     return (caps_t)
 
-
-def Get_Angle_Curve(centerline):
-    # 输入Centerline 2*100维
+def Get_Angle_Curve(centerline, curvenum=100):
+    # 输入Centerline 2*100维, 2*101 等都可以
     # 输出
     # worm_length: 单帧的线虫长度
     # angle：ndarray(101,)单帧的角度
@@ -184,10 +185,8 @@ def Get_Angle_Curve(centerline):
     if np.sum(centerline) == 0:
         return (0, np.zeros((1, 101)), np.zeros((1, 100)), np.zeros((1, 100)))
 
-    numcurvepts = 100
     proximity = 50
     spline_p = 0.0005
-    flip = 0
     timefilter = 5
     bodyfilter = 10
 
@@ -206,22 +205,23 @@ def Get_Angle_Curve(centerline):
 
     df2s = np.sqrt(np.dot([1, 1], df2 * df2))
     dft = df2s.reshape(1, len(df2s))
-    splen = np.cumsum(np.insert(dft, 0, 0)).reshape(1, 100)
+    splen = np.cumsum(np.insert(dft, 0, 0)).reshape(1, dft.shape[1]+1)
     # cv2 = np.interp(splen+0.00001*np.linspace(0,splen.size-1,splen.size,endpoint=True,dtype=float),cv2.transpose().reshape(100,2),(np.linspace(0,splen[0,-1]-1,102)).reshape(1,102))
     cv2i0 = splen + 0.00001 * np.linspace(0, splen.size - 1, splen.size, endpoint=True, dtype=float)
     cv2i1 = cv2
-    cv2i2 = (np.linspace(0, splen[0, -1] - 1, 102)).reshape(1, 102)
-    cv2i = interpolate.interp1d(cv2i0.reshape(100, ), cv2i1, bounds_error=False)
+    # 控制输出的数量
+    cv2i2 = (np.linspace(0, splen[0, -1] - 1, curvenum+2)).reshape(1, curvenum+2)
+    cv2i = interpolate.interp1d(cv2i0.reshape(cv2i0.shape[1], ), cv2i1, bounds_error=False)
     # df*df
     # t = cumsum([0,np.sqrt(np.array([1,1])*(df*df))])
-    newcv = np.array([cv2i(cv2i2)[0, 0, :], cv2i(cv2i2)[1, 0, :]]).reshape(2, 102)
+    newcv = np.array([cv2i(cv2i2)[0, 0, :], cv2i(cv2i2)[1, 0, :]]).reshape(2, cv2i2.shape[1])
 
     dfcv2 = np.diff(newcv)
     atdf2 = np.arctan2(-dfcv2[1, :], dfcv2[0, :])
     angle = np.unwrap(atdf2)
-    curve = (np.unwrap(np.diff(angle))).reshape(1, 100)
+    curve = (np.unwrap(np.diff(angle))).reshape(1, angle.shape[0]-1)
     kernel = np.ones((timefilter, bodyfilter), np.float32) / (timefilter * bodyfilter)
-    curvedatafiltered = (scipy.ndimage.correlate(curve * 100, kernel, mode='nearest')).flatten()
+    curvedatafiltered = (scipy.ndimage.correlate(curve * curve.shape[0], kernel, mode='nearest')).flatten()
     curvedatafiltered = -curvedatafiltered[::-1]
     return (worm_length, angle.transpose(), curve.flatten(), curvedatafiltered)
 
@@ -649,6 +649,8 @@ def YamlExportMatAll(YamlDataFolder: str, SaveFolder: str = None,
                      name=True,
                      worm_length=True,
                      savevideo=False,
+                     VideoPath=None,
+                     ExtractFrameNumbers=None,
                      ):
     """
     提取文件夹下所有的Yaml文件
@@ -668,6 +670,13 @@ def YamlExportMatAll(YamlDataFolder: str, SaveFolder: str = None,
         wormname = filenames.wormnames[i]
         # videofilepath = os.path.join(data_folder,filenames.videofiles[i])
         yamlfilepath = os.path.join(YamlDataFolder, filenames.yamlfiles[i])
+        if VideoPath is not None:
+            Video_Path = os.path.join(VideoPath, wormname+'.avi')
+            FrameNumbers = ExtractFrameNumbers[i]
+        else:
+            Video_Path = None
+            FrameNumbers = None
+
         YamlExportMatOne(yamlfilepath, SaveFolder, wormname + '.mat',
                          BoundaryA=BoundaryA,
                          BoundaryB=BoundaryB,
@@ -698,6 +707,8 @@ def YamlExportMatAll(YamlDataFolder: str, SaveFolder: str = None,
                          name=name,
                          worm_length=worm_length,
                          savevideo=savevideo,
+                         VideoPath=Video_Path,
+                         ExtractFrameNumber=FrameNumbers,
                          )
 
     yaml_time_end = time.time()
@@ -705,6 +716,7 @@ def YamlExportMatAll(YamlDataFolder: str, SaveFolder: str = None,
 
 
 def YamlExportMatOne(YamlPath: str,
+
                      SavePath: str,
                      SaveName: str,
                      BoundaryA=False,
@@ -736,6 +748,8 @@ def YamlExportMatOne(YamlPath: str,
                      name=True,
                      worm_length=True,
                      savevideo=False,
+                     VideoPath=None,
+                     ExtractFrameNumber=None,
                      ):
     """
     提取保存单个Yaml文件
@@ -813,6 +827,21 @@ def YamlExportMatOne(YamlPath: str,
         """
         如果要保存视频文件
         """
-        pass
+        if VideoPath is not None:
+            if os.path.exists(VideoPath):  # 如果文件存在
+                data['VideImages'] = ExtractImagesFromVideo(VideoPath, ExtractFrameNumber)
+
+        else:
+            print("Please input Video Path")
+            return 0
 
     savemat(os.path.join(SavePath, SaveName), data)
+
+
+def ExtractImagesFromVideo(Videopath, keyframes):
+    """
+    :param Videopath: 视频路径 xxx/xxx.avi
+    :param keyframes: 和视频帧数等长-1，numpy数组，提取为1，不提取为0
+    :return:
+    """
+    pass

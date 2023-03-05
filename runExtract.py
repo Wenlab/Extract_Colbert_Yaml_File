@@ -1,14 +1,27 @@
-import os
-import time
-from YamlLib.YamlFrames import Extract_Yaml_Multiprocess_one, GetWormName
+import cv2
+import numpy as np
+from YamlLib.YamlFrames import YamlExportMatAll
+import time,os
 
-yaml_path = 'H:/WenLabData/20210715_1627_w1/20210715_1627_w1/20210715_1627_w1.yaml'
+"""
+视频缩小了一倍进行存储的
+"""
 
-wormname = GetWormName(yaml_path)
-print("Process worm:", wormname)
+# data_folder = "G:/WenLabData/ExtractWormPoseData/xrk/N2_Free_Moving/YamlFiles"
 
-yaml_time_start = time.time()
-# YamlData = Extract_Yaml_Multiprocess_one(yaml_path)
-YamlData = Extract_Yaml_Multiprocess_one(yaml_path)
-yaml_time_end = time.time()
-print('All time cost:', yaml_time_end - yaml_time_start, 's')
+data_folder = "G:/WenLabData/ExtractWormPoseData/Colbert-hpis258/YamlFiles"
+SaveFolder = os.path.join(data_folder,'ExtractData')
+
+YamlExportMatAll(data_folder,SaveFolder=SaveFolder,
+                 Centerline=True,
+                 curvedatafiltered=True,
+                 TimeElapsed=True,
+                 Head=True,
+                 mean_worm_length=True,
+                 name=True,
+                 worm_length=True,
+                 savevideo=False,
+                 )
+
+
+
