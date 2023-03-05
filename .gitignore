@@ -2,3 +2,5 @@
 *.pkl
 *.idea
 /data/*
+/.vscode/
+/__pycache__/
